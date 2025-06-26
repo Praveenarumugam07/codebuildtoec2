@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='my_python_app',
-    version='0.1.15',
+    version='0.1.16',
     packages=find_packages(),  # ✅ picks up my_app
     entry_points={
         'console_scripts': [
