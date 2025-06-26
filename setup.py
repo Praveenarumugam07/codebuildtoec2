@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='my-python-app',
-    version='0.1.12',
+    version='0.1.13',
     packages=find_packages(),
     install_requires=[
         'flask'
