@@ -1,13 +1,15 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='my_python_app',
-    version='0.1.15',  # bump this whenever you make changes
-    py_modules=['main'],  # points to your main.py
-    install_requires=['flask'],
+    version='0.1.15',
+    packages=find_packages(),  # ✅ picks up my_app
     entry_points={
         'console_scripts': [
-            'myapp = main:main',
+            'myapp = my_app.main:main',  # ✅ points to my_app/main.py
         ],
     },
+    install_requires=[
+        'flask',
+    ]
 )
