@@ -5,8 +5,8 @@ env:
     CODEARTIFACT_DOMAIN: "mydomain"
     CODEARTIFACT_REPO: "myrepo"
     REGION: "ap-south-1"
-    DOMAIN_OWNER: "337243655832"
-    EC2_PUBLIC_IP: "65.2.123.176"
+    DOMAIN_OWNER: "337243655832"        # 🔁 Replace with your actual AWS Account ID
+    EC2_PUBLIC_IP: "65.2.123.176"         # 🔁 Replace with your EC2 public IP
     EC2_USER: "ubuntu"
     PARAM_NAME: "ec2-key-pem"
     PACKAGE_NAME: "my-python-app"
@@ -16,37 +16,42 @@ phases:
     runtime-versions:
       python: 3.11
     commands:
+      - echo "✅ Installing Python build tools..."
       - pip install --upgrade pip
       - pip install build twine
 
   pre_build:
     commands:
-      - aws codeartifact login --tool twine \
-          --repository $CODEARTIFACT_REPO \
-          --domain $CODEARTIFACT_DOMAIN \
-          --domain-owner $DOMAIN_OWNER \
-          --region $REGION
+      - echo "🔐 Logging in to CodeArtifact..."
+      - aws codeartifact login --tool twine --repository $CODEARTIFACT_REPO --domain $CODEARTIFACT_DOMAIN --domain-owner $DOMAIN_OWNER --region $REGION
 
   build:
     commands:
+      - echo "📦 Building Python package..."
       - python -m build
 
   post_build:
     commands:
+      - echo "🔐 Getting CodeArtifact token..."
       - export CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
           --domain $CODEARTIFACT_DOMAIN \
           --domain-owner $DOMAIN_OWNER \
           --region $REGION \
           --query authorizationToken --output text)
 
+      - echo "⬆️ Uploading package to CodeArtifact..."
       - twine upload --repository-url https://$CODEARTIFACT_DOMAIN-$DOMAIN_OWNER.d.codeartifact.$REGION.amazonaws.com/pypi/$CODEARTIFACT_REPO/ \
           -u aws -p $CODEARTIFACT_AUTH_TOKEN dist/*
 
+      - echo "🔑 Fetching EC2 key from SSM..."
       - aws ssm get-parameter --name "$PARAM_NAME" --with-decryption --query Parameter.Value --output text > key.pem
       - chmod 400 key.pem
 
+      - echo "🚀 Deploying to EC2..."
       - |
         ssh -o StrictHostKeyChecking=no -i key.pem $EC2_USER@$EC2_PUBLIC_IP << 'EOF'
+          echo "🛠️ Installing dependencies on EC2..."
+
           if ! command -v aws &> /dev/null; then
             sudo apt update && sudo apt install -y awscli
           fi
@@ -58,15 +63,19 @@ phases:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
           CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
-            --domain mydomain \
+            --domain $CODEARTIFACT_DOMAIN \
             --domain-owner $ACCOUNT_ID \
-            --region ap-south-1 \
+            --region $REGION \
             --query authorizationToken --output text)
 
-          pip install --user --upgrade my-python-app \
-            --extra-index-url https://aws:$CODEARTIFACT_AUTH_TOKEN@mydomain-$ACCOUNT_ID.d.codeartifact.ap-south-1.amazonaws.com/pypi/myrepo/simple/ \
-            --trusted-host mydomain-$ACCOUNT_ID.d.codeartifact.ap-south-1.amazonaws.com
+          echo "📥 Installing app from CodeArtifact..."
+          pip install --user --upgrade $PACKAGE_NAME \
+            --extra-index-url https://aws:$CODEARTIFACT_AUTH_TOKEN@$CODEARTIFACT_DOMAIN-$ACCOUNT_ID.d.codeartifact.$REGION.amazonaws.com/pypi/$CODEARTIFACT_REPO/simple/ \
+            --trusted-host $CODEARTIFACT_DOMAIN-$ACCOUNT_ID.d.codeartifact.$REGION.amazonaws.com
 
+          echo "🛑 Stopping any existing app..."
           pkill -f myapp || true
+
+          echo "🏃 Starting Flask app on port 8080..."
           nohup ~/.local/bin/myapp > app.log 2>&1 &
         EOF
